@@ -41,6 +41,28 @@
             <version>${flink.version}</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-connector-kafka_2.11</artifactId>
+            <version>${flink.version}</version>
+        </dependency>
+        <!-- 引入 kafka连接器依赖-->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-connector-kafka</artifactId>
+            <version>1.17.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+            <version>3.5.0</version>
+        </dependency>
+        <!--自然语言处理的库-->
+        <dependency>
+            <groupId>edu.stanford.nlp</groupId>
+            <artifactId>stanford-corenlp</artifactId>
+            <version>4.5.4</version> <!-- 请根据最新版本进行更新 -->
+        </dependency>
 
         <!--webUI界面，类似于Hadoop的hdfs、yarn网页显示-->
         <dependency>
@@ -70,6 +92,5 @@
             <scope>provided</scope>
         </dependency>
     </dependencies>
-
 
 </project>

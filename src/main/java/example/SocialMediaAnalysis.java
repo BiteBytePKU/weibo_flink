@@ -1,29 +1,49 @@
 package example;
 
+import edu.stanford.nlp.pipeline.StanfordCoreNLP;
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.tuple.Tuple4;
+import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
 import org.apache.flink.util.Collector;
-
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Properties;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import edu.stanford.nlp.pipeline.*;
+import edu.stanford.nlp.ling.*;
+import edu.stanford.nlp.neural.rnn.RNNCoreAnnotations;
+import edu.stanford.nlp.sentiment.SentimentCoreAnnotations;
+import edu.stanford.nlp.util.CoreMap;
+
 
 public class SocialMediaAnalysis {
 
     public static void main(String[] args) throws Exception {
-        // 1. 获取 有界流 的 执行环境
+        // 1. 获取执行环境
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        // Kafka参数
+        Properties properties = new Properties();
+        properties.setProperty("bootstrap.servers", "192.168.129.134:9092");
+        properties.setProperty("group.id", "flink-group");
+        String inputTopic = "weibo";
+        String outputTopic = "analysis";
+
+        FlinkKafkaConsumer<String> consumer =
+                new FlinkKafkaConsumer<String>(inputTopic, new SimpleStringSchema(), properties);
+        DataStream<String> weiboStream = env.addSource(consumer);
 
         /* 如果需要设置固定的WebUI端口，则在获取执行环境时需要传入参数
         Configuration conf = new Configuration();
@@ -31,11 +51,6 @@ public class SocialMediaAnalysis {
         ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment(conf);
         */
 
-        // 2. 设置并行度
-        env.setParallelism(1);
-
-        // 3. 获取源数据（从远程机器上获取）
-        DataStream<String> weiboStream = env.socketTextStream("192.168.10.111", 9999);
         // 读取微博数据
 //      DataStream<String> weiboStream = env.readTextFile("input/words.csv");
 
@@ -46,6 +61,11 @@ public class SocialMediaAnalysis {
         // 敏感词检测
         DataStream<Tuple3<String, String, String>> sensitiveWordsResult = weiboStream
                 .flatMap(new SensitiveWordChecker(sensitiveWords));
+        // 情感倾向分析
+//        DataStream<Tuple3<String, String, String>> sentimentResult = weiboStream
+//                .map(new SentimentAnalyzer());
+//
+//        sentimentResult.print();
 
 //        // 话题点赞数统计
 //        DataStream<Tuple4<String, Long, Long, Long>> topicLikesResult = weiboStream
@@ -99,6 +119,63 @@ public class SocialMediaAnalysis {
             } catch (Exception e) {
                 System.err.println("Error processing: " + value);
                 e.printStackTrace();
+            }
+        }
+    }
+
+    // 情感分析器
+    public static class SentimentAnalyzer implements MapFunction<String, Tuple3<String, String, String>> {
+        private StanfordCoreNLP pipeline;
+
+        public SentimentAnalyzer() {
+            // 创建 StanfordCoreNLP 对象
+            Properties props = new Properties();
+            props.setProperty("annotators", "tokenize, ssplit, parse, sentiment");
+            pipeline = new StanfordCoreNLP(props);
+        }
+
+        @Override
+        public Tuple3<String, String, String> map(String value) throws Exception {
+            String[] columns = value.split(",");
+            if (columns.length >= 3) {
+                String id = columns[0];
+                String bid = columns[1];
+                String content = columns[2];
+
+                // 分析情感
+                String sentiment = analyzeSentiment(content);
+
+                return new Tuple3<>(id, bid, sentiment);
+            } else {
+                return new Tuple3<>("", "", "无法分析");
+            }
+        }
+
+        private String analyzeSentiment(String text) {
+            int mainSentiment = 0;
+            if (text != null && text.length() > 0) {
+                int longest = 0;
+                Annotation annotation = pipeline.process(text);
+                for (CoreMap sentence : annotation.get(CoreAnnotations.SentencesAnnotation.class)) {
+                    int sentiment = RNNCoreAnnotations.getPredictedClass(sentence.get(SentimentCoreAnnotations.SentimentAnnotatedTree.class));
+                    int length = sentence.toString().length();
+                    if (length > longest) {
+                        mainSentiment = sentiment;
+                        longest = length;
+                    }
+                }
+            }
+            return sentimentToString(mainSentiment);
+        }
+
+        private String sentimentToString(int sentiment) {
+            switch (sentiment) {
+                case 0: return "非常负面";
+                case 1: return "负面";
+                case 2: return "中性";
+                case 3: return "正面";
+                case 4: return "非常正面";
+                default: return "未知";
             }
         }
     }
