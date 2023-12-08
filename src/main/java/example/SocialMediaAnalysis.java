@@ -88,7 +88,9 @@ public class SocialMediaAnalysis {
                 properties                      // Kafka 配置属性
         );
 
-        sensitiveWordsResult.writeAsCsv("result.csv");
+        sensitiveWordsResult.writeAsCsv("key_result.csv");
+        sentimentResult.writeAsCsv("sentiment_result.csv");
+        topicLikesResult.writeAsCsv("tp_result.csv");
         // 将结果发送到 Kafka
         sensitiveWordsResult.addSink(myProducer1).name("Kafka Sink - FlinkResult");
         sentimentResult.addSink(myProducer2).name("Kafka Sink - FlinkResult");
